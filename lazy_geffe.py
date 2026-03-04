@@ -148,7 +148,7 @@ def siegenthaler_autonomous() -> None:
             else:
                 dec_file = f"{filename}.{filetype}"
                 enc_header = extract_header(enc_file)
-                gamma_part = xor(enc_header, headers[f"{filetype}"])
+                gamma_part = xor(enc_header, headers[filetype])
                 key_1 = max_correlation(gamma_part, register_1)
                 key_3 = max_correlation(gamma_part, register_3)
                 key_2 = geffe_analysis([register_1, register_2, register_3], gamma_part, key_1, key_3)
@@ -164,7 +164,7 @@ def siegenthaler_autonomous() -> None:
                     gamma = '0' + gamma
                 gamma = bytes.fromhex(gamma)
                 decrypted = xor(data, gamma, "bytes")
-                if decrypted.hex()[:16] == headers[f"{filetype}"]:
+                if decrypted.hex()[:16] == headers[filetype]:
                     gamma = xor(gamma, b'\x00') # convert gamma to binary format
                     with open (f"gamma_{filename}.txt", "w") as g:
                         g.write(gamma)
@@ -207,7 +207,7 @@ def siegenthaler_dependent() -> str | None:
                 else:
                     dec_file = f"{filename}.{filetype}"
                     enc_header = extract_header(enc_file)
-                    gamma_part = xor(enc_header, headers[f"{filetype}"])
+                    gamma_part = xor(enc_header, headers[filetype])
                     keys = gen_keys(gamma_part, [register_1, register_3])
                     for key in keys:
                         with open("key.txt", "w") as k:
