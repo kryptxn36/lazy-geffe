@@ -16,8 +16,9 @@ parser = argparse.ArgumentParser(
     .docx\n\
     .xlsx\n\
     .pptx",
-    usage="python lazy_geffe.py <encrypted_file>")
-parser.add_argument('encrypted_file')
+    usage="python lazy_geffe.py <encrypted_file> -o <output_path (optional)>")
+parser.add_argument('encrypted_file', nargs="*")
+parser.add_argument('-o', '--output', default=os.getcwd(), required=False, help='Path to program\'s output (default: current working directory)')
 args = parser.parse_args()
 
 headers = {
@@ -28,6 +29,10 @@ headers = {
     "xlsx": "504b030414000600",
     "pptx": "504b030414000600"
     } # these MS Office files happen to share the same signature
+
+register_1 = [4, 2, 0]
+register_2 = [3, 1, 0]
+register_3 = [5, 2, 0]
 
 def extract_header(filename: str) -> str:
     with open(filename, 'rb') as f:
@@ -128,53 +133,63 @@ def geffe_analysis(registers: list, gamma: str, key_1: str, key_3: str) -> str:
     return key_2
 
 def siegenthaler_autonomous() -> None:
-    register_1 = [4, 2, 0]
-    register_2 = [3, 1, 0]
-    register_3 = [5, 2, 0]
-    global headers
+    global headers, register_1, register_2, register_3
 
-    enc_file = args.encrypted_file
-    if not os.path.exists(enc_file):
-        print(f'File "{enc_file}" not found!')
-    else:
-        filename = re.search(r"^.*?(?=-|\.)", enc_file).group(0)
-        try:
-            filetype = re.search(r"(?<=\.)([a-z]{1,})(?=\.)", enc_file).group(1)
-        except:
-            print(f"Can not decrypt provided file.")
+    enc_files = args.encrypted_file
+    if args.output:
+        if os.path.isdir(args.output):
+            dec_dir = args.output
         else:
-            if filetype not in headers:
-                print(f'"{filetype}" is not supported')
+            print(f'Directory "{args.output}" does not exist')
+            return None
+    else:
+        dec_dir = ""
+    for file in enc_files:
+        if not os.path.exists(file):
+            print(f'File "{file}" not found!')
+        else:
+            if "/" in file or "\\" in file:
+                filename = re.search(r"(?<=\\|\/)(.[^\.]{1,})", file).group(0)
             else:
-                dec_file = f"{filename}.{filetype}"
-                enc_header = extract_header(enc_file)
-                gamma_part = xor(enc_header, headers[filetype])
-                key_1 = max_correlation(gamma_part, register_1)
-                key_3 = max_correlation(gamma_part, register_3)
-                key_2 = geffe_analysis([register_1, register_2, register_3], gamma_part, key_1, key_3)
-                key = key_1 + key_2 + key_3
-                gamma = geffe([register_1, register_2, register_3], key_1=key_1, key_2=key_2, key_3=key_3, gamma_length=3255)
-                with open(f"{enc_file}", 'rb') as f:
-                    data = f.read()
-                if len(gamma) % 2: 
-                    gamma += '0'
-                gamma = int(gamma, 2)
-                gamma = hex(gamma)[2:]
-                if len(gamma) % 2:
-                    gamma = '0' + gamma
-                gamma = bytes.fromhex(gamma)
-                decrypted = xor(data, gamma, "bytes")
-                if decrypted.hex()[:16] == headers[filetype]:
-                    gamma = xor(gamma, b'\x00') # convert gamma to binary format
-                    with open (f"gamma_{filename}.txt", "w") as g:
-                        g.write(gamma)
-                    with open(f"{dec_file}", "wb") as d:
-                        d.write(decrypted)
-                    print(f"{enc_file} has been successfully decrypted as {dec_file}.")
-                    print(f"Key: {key}.")
-                    print(f"Gamma is saved to gamma_{filename}.txt")
-                    return None
-                print("Decryption failed")
+                filename = re.search(r"^.*?(?=-|\.)", file).group(0)
+            try:
+                filetype = re.search(r"(?<=\.)([a-z]{1,})(?=\.)", file).group(1)
+            except:
+                print(f"Can not decrypt provided file.")
+            else:
+                if filetype not in headers:
+                    print(f'"{filetype}" is not supported')
+                else:
+                    dec_file = f"{filename}.{filetype}"
+                    enc_header = extract_header(file)
+                    gamma_part = xor(enc_header, headers[filetype])
+                    key_1 = max_correlation(gamma_part, register_1)
+                    key_3 = max_correlation(gamma_part, register_3)
+                    key_2 = geffe_analysis([register_1, register_2, register_3], gamma_part, key_1, key_3)
+                    key = key_1 + key_2 + key_3
+                    gamma = geffe([register_1, register_2, register_3], key_1, key_2, key_3, gamma_length=3255)
+                    with open(f"{file}", 'rb') as f:
+                        data = f.read()
+                    if len(gamma) % 2: 
+                        gamma += '0'
+                    gamma = int(gamma, 2)
+                    gamma = hex(gamma)[2:]
+                    if len(gamma) % 2:
+                        gamma = '0' + gamma
+                    gamma = bytes.fromhex(gamma)
+                    decrypted = xor(data, gamma, "bytes")
+                    if decrypted.hex()[:16] == headers[filetype]:
+                        gamma = xor(gamma, b'\x00') # convert gamma to binary format
+                        with open (os.path.join(dec_dir, f"{filename}_gamma.txt"), "w") as g:
+                            g.write(gamma)
+                        with open(os.path.join(dec_dir, f"{dec_file}"), "wb") as d:
+                            d.write(decrypted)
+                        print(f"{file} has been successfully decrypted as {dec_file}.")
+                        print(f"Key: {key}.")
+                        print(f"Gamma is saved to {filename}_gamma.txt")
+                    else:
+                        print("Decryption failed")
+    return None
 
 def siegenthaler_dependent() -> str | None:
     '''
@@ -187,12 +202,10 @@ def siegenthaler_dependent() -> str | None:
         print('Put it as well as the "registers.txt" file in the working directory')
         return None
     else:
-        register_1 = [4, 2, 0]
-        register_2 = [3, 1, 0]
-        register_3 = [5, 2, 0]
-        global headers
+        global headers, register_1, register_2, register_3
 
         enc_file = args.encrypted_file
+
         if not os.path.exists(enc_file):
             print(f'File "{enc_file}" not found!')
         else:
@@ -214,8 +227,8 @@ def siegenthaler_dependent() -> str | None:
                             k.write(key)
                             k.close()
                             pass
-                        subprocess.run(f'./geffe registers.txt key.txt gamma_{filename}.txt > /dev/null', shell='/bin/bash')
-                        with open(f"gamma_{filename}.txt", 'r') as g:
+                        subprocess.run(f'./geffe registers.txt key.txt {filename}_gamma.txt > /dev/null', shell='/bin/bash')
+                        with open(f"{filename}_gamma.txt", 'r') as g:
                             gamma = g.read()
                         with open(f"{enc_file}", 'rb') as e:
                             data = e.read()
@@ -232,7 +245,7 @@ def siegenthaler_dependent() -> str | None:
                                 d.write(decrypted)
                             print(f"{enc_file} has been successfully decrypted as {dec_file}")
                             print(f"Key: {key}")
-                            print(f"Gamma is saved to gamma_{filename}.txt")
+                            print(f"Gamma is saved to {filename}_gamma.txt")
                             return None
                         else:
                             continue
